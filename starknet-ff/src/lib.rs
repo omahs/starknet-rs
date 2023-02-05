@@ -1,8 +1,11 @@
 #![allow(clippy::comparison_chain)]
 
-use crate::fr::FrParameters;
+use crate::fr::Fr;
 
-use ark_ff::{fields::Fp256, BigInteger, BigInteger256, Field, PrimeField, SquareRootField};
+use ark_ff::{
+    fields::{Field, Fp256, PrimeField},
+    BigInteger, BigInteger256,
+};
 use crypto_bigint::{CheckedAdd, CheckedMul, Zero, U256};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,7 +19,7 @@ const U256_BYTE_COUNT: usize = 32;
 
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct FieldElement {
-    inner: Fp256<FrParameters>,
+    inner: Fr,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -79,7 +82,7 @@ impl FieldElement {
     /// Create a new [FieldElement] from its Montgomery representation
     pub const fn from_mont(data: [u64; 4]) -> Self {
         Self {
-            inner: Fp256::new(BigInteger256::new(data)),
+            inner: Fp256::new_unchecked(BigInteger256::new(data)),
         }
     }
 
@@ -111,7 +114,7 @@ impl FieldElement {
             res = r;
         }
 
-        Fp256::<FrParameters>::from_repr(u256_to_biginteger256(&res))
+        Fr::from_bigint(u256_to_biginteger256(&res))
             .map(|inner| Self { inner })
             .ok_or(FromStrError::OutOfRange)
     }
@@ -180,7 +183,7 @@ impl FieldElement {
     /// Transforms [FieldElement] into little endian bit representation.
     pub fn to_bits_le(self) -> [bool; 256] {
         let mut bits = [false; 256];
-        for (ind_element, element) in self.inner.into_repr().0.iter().enumerate() {
+        for (ind_element, element) in self.inner.into_bigint().0.iter().enumerate() {
             for ind_bit in 0..64 {
                 bits[ind_element * 64 + ind_bit] = (element >> ind_bit) & 1 == 1;
             }
@@ -192,7 +195,7 @@ impl FieldElement {
     /// Convert the field element into a big-endian byte representation
     pub fn to_bytes_be(&self) -> [u8; 32] {
         let mut buffer = [0u8; 32];
-        buffer.copy_from_slice(&self.inner.into_repr().to_bytes_be());
+        buffer.copy_from_slice(&self.inner.into_bigint().to_bytes_be());
 
         buffer
     }
@@ -222,7 +225,7 @@ impl FieldElement {
 
             // It's safe to unwrap here since `rem` is never out of range
             FieldElement {
-                inner: Fp256::<FrParameters>::from_repr(u256_to_biginteger256(&quotient)).unwrap(),
+                inner: Fr::from_bigint(u256_to_biginteger256(&quotient)).unwrap(),
             }
         } else {
             // TODO: add `checked_floor_div` for panic-less use
@@ -239,9 +242,9 @@ impl FieldElement {
             }
         }
 
-        // No need to check range as `from_repr` already does that
+        // No need to check range as `from_bigint` already does that
         let big_int = BigInteger256::from_bits_be(&bits);
-        Fp256::<FrParameters>::from_repr(big_int).map(|inner| Self { inner })
+        Fr::from_bigint(big_int).map(|inner| Self { inner })
     }
 }
 
@@ -306,7 +309,7 @@ impl std::ops::Rem<FieldElement> for FieldElement {
 
             // It's safe to unwrap here since `rem` is never out of range
             FieldElement {
-                inner: Fp256::<FrParameters>::from_repr(u256_to_biginteger256(&rem)).unwrap(),
+                inner: Fr::from_bigint(u256_to_biginteger256(&rem)).unwrap(),
             }
         } else {
             // TODO: add `checked_rem` for panic-less use
@@ -324,7 +327,7 @@ impl std::ops::BitAnd<FieldElement> for FieldElement {
 
         // It's safe to unwrap here since the result is never out of range
         FieldElement {
-            inner: Fp256::<FrParameters>::from_repr(u256_to_biginteger256(&(lhs & rhs))).unwrap(),
+            inner: Fr::from_bigint(u256_to_biginteger256(&(lhs & rhs))).unwrap(),
         }
     }
 }
@@ -338,7 +341,7 @@ impl std::ops::BitOr<FieldElement> for FieldElement {
 
         // It's safe to unwrap here since the result is never out of range
         FieldElement {
-            inner: Fp256::<FrParameters>::from_repr(u256_to_biginteger256(&(lhs | rhs))).unwrap(),
+            inner: Fr::from_bigint(u256_to_biginteger256(&(lhs | rhs))).unwrap(),
         }
     }
 }
@@ -469,8 +472,7 @@ impl<'de> Deserialize<'de> for FieldElement {
 impl From<u8> for FieldElement {
     fn from(value: u8) -> Self {
         Self {
-            inner: Fp256::<FrParameters>::from_repr(BigInteger256::new([value as u64, 0, 0, 0]))
-                .unwrap(),
+            inner: Fr::from_bigint(BigInteger256::new([value as u64, 0, 0, 0])).unwrap(),
         }
     }
 }
@@ -478,8 +480,7 @@ impl From<u8> for FieldElement {
 impl From<u16> for FieldElement {
     fn from(value: u16) -> Self {
         Self {
-            inner: Fp256::<FrParameters>::from_repr(BigInteger256::new([value as u64, 0, 0, 0]))
-                .unwrap(),
+            inner: Fr::from_bigint(BigInteger256::new([value as u64, 0, 0, 0])).unwrap(),
         }
     }
 }
@@ -487,8 +488,7 @@ impl From<u16> for FieldElement {
 impl From<u32> for FieldElement {
     fn from(value: u32) -> Self {
         Self {
-            inner: Fp256::<FrParameters>::from_repr(BigInteger256::new([value as u64, 0, 0, 0]))
-                .unwrap(),
+            inner: Fr::from_bigint(BigInteger256::new([value as u64, 0, 0, 0])).unwrap(),
         }
     }
 }
@@ -496,7 +496,7 @@ impl From<u32> for FieldElement {
 impl From<u64> for FieldElement {
     fn from(value: u64) -> Self {
         Self {
-            inner: Fp256::<FrParameters>::from_repr(BigInteger256::new([value, 0, 0, 0])).unwrap(),
+            inner: Fr::from_bigint(BigInteger256::new([value, 0, 0, 0])).unwrap(),
         }
     }
 }
@@ -504,8 +504,7 @@ impl From<u64> for FieldElement {
 impl From<usize> for FieldElement {
     fn from(value: usize) -> Self {
         Self {
-            inner: Fp256::<FrParameters>::from_repr(BigInteger256::new([value as u64, 0, 0, 0]))
-                .unwrap(),
+            inner: Fr::from_bigint(BigInteger256::new([value as u64, 0, 0, 0])).unwrap(),
         }
     }
 }
@@ -526,7 +525,7 @@ impl TryFrom<FieldElement> for u8 {
     type Error = ValueOutOfRangeError;
 
     fn try_from(value: FieldElement) -> Result<Self, Self::Error> {
-        let repr = value.inner.into_repr().0;
+        let repr = value.inner.into_bigint().0;
         if repr[0] > u8::MAX as u64 || repr[1] > 0 || repr[2] > 0 || repr[3] > 0 {
             Err(ValueOutOfRangeError)
         } else {
@@ -539,7 +538,7 @@ impl TryFrom<FieldElement> for u16 {
     type Error = ValueOutOfRangeError;
 
     fn try_from(value: FieldElement) -> Result<Self, Self::Error> {
-        let repr = value.inner.into_repr().0;
+        let repr = value.inner.into_bigint().0;
         if repr[0] > u16::MAX as u64 || repr[1] > 0 || repr[2] > 0 || repr[3] > 0 {
             Err(ValueOutOfRangeError)
         } else {
@@ -552,7 +551,7 @@ impl TryFrom<FieldElement> for u32 {
     type Error = ValueOutOfRangeError;
 
     fn try_from(value: FieldElement) -> Result<Self, Self::Error> {
-        let repr = value.inner.into_repr().0;
+        let repr = value.inner.into_bigint().0;
         if repr[0] > u32::MAX as u64 || repr[1] > 0 || repr[2] > 0 || repr[3] > 0 {
             Err(ValueOutOfRangeError)
         } else {
@@ -565,7 +564,7 @@ impl TryFrom<FieldElement> for u64 {
     type Error = ValueOutOfRangeError;
 
     fn try_from(value: FieldElement) -> Result<Self, Self::Error> {
-        let repr = value.inner.into_repr().0;
+        let repr = value.inner.into_bigint().0;
         if repr[1] > 0 || repr[2] > 0 || repr[3] > 0 {
             Err(ValueOutOfRangeError)
         } else {
@@ -577,13 +576,13 @@ impl TryFrom<FieldElement> for u64 {
 impl From<&FieldElement> for U256 {
     #[cfg(target_pointer_width = "64")]
     fn from(value: &FieldElement) -> Self {
-        U256::from_words(value.inner.into_repr().0)
+        U256::from_words(value.inner.into_bigint().0)
     }
 
     #[cfg(target_pointer_width = "32")]
     fn from(value: &FieldElement) -> Self {
         U256::from_words(unsafe {
-            std::mem::transmute::<[u64; 4], [u32; 8]>(value.inner.into_repr().0)
+            std::mem::transmute::<[u64; 4], [u32; 8]>(value.inner.into_bigint().0)
         })
     }
 }
